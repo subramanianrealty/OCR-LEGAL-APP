@@ -20,16 +20,116 @@ document content is ever sent to an external translation service.
 """
 
 import re
+import logging
 from typing import Dict, Any, List, Optional
 from app.translator import format_bilingual_entity
 from app.validator import ExtractionValidator
+
+logger = logging.getLogger("SaleDeedExtractor")
 
 
 class SaleDeedExtractor:
     """Extractor for Sale Deed / Title Deed."""
 
+    # Markers identifying the pre-printed government non-judicial stamp paper
+    # header (security-print banner + stamp vendor's endorsement/seal) that TN
+    # sale deeds are physically written on. This header is not part of the
+    # deed's own recitals, so it must be scrubbed before field regexes run —
+    # otherwise the stamp's own denomination ("Rs.10000", "TEN THOUSAND
+    # RUPEES") gets mistaken for the sale consideration amount, its Hindi
+    # banner text for Tamil/English deed content, or the stamp vendor's name
+    # for a party's name.
+    _STAMP_PAPER_LINE_PATTERNS = [
+        r'non[\s-]?judicial',
+        r'gair\s*nyayik',
+        r'stamp\s*paper',
+        r'stamp\s*vendor',
+        r'முத்திரை\s*(?:தாள்|பத்திரம்)\s*விற்பனையாளர்',
+        r'licen[cs]ed\s*stamp',
+        r'\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|'
+        r'twenty|thirty|forty|fifty|hundred|thousand|lakh)\b[^\n]{0,30}\brupees\b',
+    ]
+
     def __init__(self):
         pass
+
+    # The stamp paper's ornate header + vendor seal, once OCR'd, is always a
+    # short run of lines at the very top of page 1 -- well under this count --
+    # so bare-denomination stripping (below) stays tightly scoped to it and
+    # never reaches into the deed's own body text further down the document.
+    _STAMP_PAPER_HEADER_ZONE_LINES = 20
+
+    def _strip_stamp_paper_noise(self, text: str) -> str:
+        """Remove non-judicial stamp paper header/vendor-seal lines from OCR text
+        so they never leak into the deed's own field-extraction regexes."""
+        if not text:
+            return text
+        lines = text.splitlines()
+        cleaned_lines = []
+        skipped = []
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped:
+                cleaned_lines.append(line)
+                continue
+            # Hindi (Devanagari) banner text -- TN sale deeds are Tamil/English
+            # only, so any Devanagari script is exclusively the stamp header.
+            if re.search(r'[ऀ-ॿ]', stripped):
+                skipped.append(stripped)
+                continue
+            if any(re.search(pat, stripped, re.IGNORECASE) for pat in self._STAMP_PAPER_LINE_PATTERNS):
+                skipped.append(stripped)
+                continue
+            # Within the header zone only, also drop bare "Rs. <amount>"
+            # denomination lines that carry none of the deed's own amount
+            # vocabulary -- the stamp's own face value (printed twice on the
+            # paper, and repeated in the vendor's handwritten purchase note)
+            # always appears unlabeled, unlike the deed's real consideration
+            # clause further down (e.g. "Consideration Amount: Rs. ...").
+            if (i < self._STAMP_PAPER_HEADER_ZONE_LINES
+                    and re.search(r'(?:rs\.?|₹)\s*[\d,]+', stripped, re.IGNORECASE)
+                    and not re.search(r'consideration|sale\s*(?:value|price)|amount|paid|price|value|'
+                                       r'கிரயம்|கிரையம்|தொகை|விற்பனை', stripped, re.IGNORECASE)):
+                skipped.append(stripped)
+                continue
+            cleaned_lines.append(line)
+
+        if skipped:
+            logger.info(f"Stamp paper header detected: skipped {len(skipped)} line(s) before field extraction.")
+            for s in skipped:
+                logger.info(f"  - Skipped stamp paper line: {s!r}")
+
+        return "\n".join(cleaned_lines)
+
+    # Boilerplate accompanying a party/witness's actual signature or thumb
+    # impression on the execution page. This label text sits right next to
+    # (or on the same OCR'd line as) the person's name, so it must be
+    # stripped before that name is captured -- otherwise "Sd/- Ramasamy" or
+    # "Ramasamy (Signature)" ends up stored as the party's name verbatim.
+    _SIGNATURE_BOILERPLATE_PATTERNS = [
+        r'\bsd\s*/\s*-+',
+        r'\bsd\.(?!\w)',
+        r'signature\s*(?:of\s*(?:the\s*)?(?:vendor|purchaser|witness(?:es)?|executant|claimant|seller|buyer|party|parties))?\s*[:\-]?',
+        r'\bl\.?\s*t\.?\s*i\.?\b',  # Left Thumb Impression
+        r'signed\s*by\b',
+        r'கையொப்பம்',
+        r'ஒப்பம்',
+        r'கை\s*ரேகை',
+    ]
+
+    def _strip_signature_boilerplate(self, s: Optional[str]) -> Optional[str]:
+        """Remove signature-related boilerplate ('Sd/-', 'Signature of Vendor',
+        'L.T.I.', கையொப்பம்) from a candidate name/witness string so the label
+        itself is never mistaken for part of the person's name."""
+        if not s:
+            return s
+        cleaned = s
+        for pat in self._SIGNATURE_BOILERPLATE_PATTERNS:
+            cleaned = re.sub(pat, ' ', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip(' -:,')
+        if cleaned != s.strip():
+            logger.info(f"Signature boilerplate stripped: {s.strip()!r} -> {cleaned!r}")
+        return cleaned
 
     def _find_value(self, text, patterns, flags=re.IGNORECASE):
         for pat in patterns:
@@ -63,6 +163,7 @@ class SaleDeedExtractor:
 
         name_m = re.search(r'(?:Name|பெயர்)\s*[:\-]\s*([^\n]+)', block, re.IGNORECASE)
         name_line = name_m.group(1).strip() if name_m else block.splitlines()[0].strip()
+        name_line = self._strip_signature_boilerplate(name_line) or name_line
 
         rel_m = re.search(
             r'^(.*?),?\s*(?:S/o|W/o|D/o|H/o|Son of|Wife of|Daughter of|Husband of|'
@@ -207,11 +308,15 @@ class SaleDeedExtractor:
                     line = line.strip()
                     if not line:
                         continue
+                    line = self._strip_signature_boilerplate(line)
+                    if not line:
+                        continue
                     if re.match(r'^[A-Z][A-Za-z.]+(?:\s+[A-Z][A-Za-z.]+){1,3}$', line):
                         return line
         return None
 
     def extract(self, text: str) -> Dict[str, Any]:
+        text = self._strip_stamp_paper_noise(text)
         fields = {}
 
         # ── Block-scoped extraction for Vendor / Purchaser (keeps addresses & PAN from bleeding across parties) ──
@@ -618,7 +723,8 @@ class SaleDeedExtractor:
                 re.sub(r'^\d+[\.\)]\s*', '', ln.strip())
                 for ln in wit_block.splitlines() if ln.strip()
             ]
-            wit_lines = [ln for ln in wit_lines if len(ln) >= 2][:4]
+            wit_lines = [self._strip_signature_boilerplate(ln) for ln in wit_lines]
+            wit_lines = [ln for ln in wit_lines if ln and len(ln) >= 2][:4]
             if wit_lines:
                 witnesses = ", ".join(wit_lines)
         if not witnesses:
