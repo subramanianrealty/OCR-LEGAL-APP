@@ -34,7 +34,7 @@ STRICT EXTRACTION RULES:
 7. Do not wrap fields in nested objects. Do NOT output extra text or markdown outside the JSON."""
 
 RELEVANT_KEYWORDS = {
-    "sale_deed": ["schedule", "சொத்து விவரம்", "survey", "புல எண்", "boundaries", "four boundaries", "vendor", "purchaser", "விற்பவர்", "வாங்குபவர்", "consideration", "கிரையத் தொகை", "previous document", "முந்தைய"],
+    "sale_deed": ["schedule", "சொத்து விவரம்", "survey", "புல எண்", "boundaries", "four boundaries", "vendor", "purchaser", "விற்பவர்", "வாங்குபவர்", "consideration", "கிரையத் தொகை", "previous document", "முந்தைய", "witness", "சாட்சி", "power of attorney", "poa", "gpa", "அதிகாரப்பத்திரம்", "passport", "visa", "nri", "book no", "புத்தகம்", "endorsement", "seal", "address", "முகவரி"],
     "patta": ["பட்டா", "patta", "உரிமையாளர்", "owner", "pattadhar", "புல எண்", "survey", "ஹெக்டேர்", "ஏர்ஸ்", "நஞ்சை", "புஞ்சை", "10(1)"],
     "ec": ["encumbrance", "வில்லங்கம்", "form 15", "form 16", "mortgage", "அடமானம்", "receipt", "ரசீது", "discharge", "விடுதலை", "bank", "வங்கி"],
     "parent_docs": ["mother deed", "parent deed", "முந்தைய ஆவணம்", "தாய் பத்திரம்", "chain of title", "previous owner", "title trace"],
@@ -61,15 +61,39 @@ DEFAULT_TARGET_FIELDS_BY_DOC_TYPE = {
     },
     "sale_deed": {
         "vendor_details": "Vendor / Seller name(s), PAN, masked Aadhaar",
+        "vendor_name": "Executant / Vendor / Seller full name",
+        "vendor_father_husband_name": "Vendor's Father's or Husband's name",
+        "vendor_address": "Vendor's full address",
         "purchaser_details": "Purchaser / Buyer name(s), PAN, masked Aadhaar",
+        "purchaser_name": "Claimant / Purchaser / Buyer full name",
+        "purchaser_father_husband_name": "Purchaser's Father's or Husband's name",
+        "purchaser_address": "Purchaser's full address",
         "history_previous_owner": "History / Previous Owner / Prior Deed details",
+        "previous_doc_reference": "Previous document / mother deed number and year",
         "schedule_property_type": "Schedule of Property (Plot / House / Apartment with UDS)",
         "survey_number": "Survey Number & Sub-division (e.g., '142/2A')",
+        "sub_division_number": "Sub-division number of the survey number",
         "land_extent": "Total Land Extent transferred (verbatim Sq.Ft / Cents / Acres)",
+        "building_built_up_area": "Built-up area of building (Land with Building schedule)",
+        "flat_number": "Flat / Door number (Apartment schedule)",
+        "floor_number": "Floor number (Apartment schedule)",
+        "uds_area": "Undivided Share of Land (UDS) area (Apartment schedule)",
         "apartment_uds_floor": "Flat No, Floor, Built-Up Area, and UDS (if apartment)",
         "boundary": "Four boundaries (North, South, East, West)",
+        "boundary_north": "North boundary description",
+        "boundary_south": "South boundary description",
+        "boundary_east": "East boundary description",
+        "boundary_west": "West boundary description",
+        "land_classification": "Classification of land (Wet/Dry/House Site/Nanjai/Punjai)",
         "sro_details": "Sub-Registrar Office, Document Number, Year & Book",
-        "consideration_amount": "Total Sale Consideration Amount in Rs."
+        "document_number": "Document number and year",
+        "book_number": "Registration Book number",
+        "registration_date": "Date of Registration",
+        "consideration_amount": "Total Sale Consideration Amount in Rs.",
+        "witnesses": "Names of witnesses who signed the deed",
+        "registrar_endorsement": "Registrar's endorsement / office seal text if present",
+        "nri_passport_visa_details": "Passport & visa details if either party is an NRI",
+        "poa_details": "Registered Power of Attorney details if signed on behalf of the owner"
     },
     "parent_docs": {
         "previous_owner_vendor": "Prior Vendor / Previous Owner",
@@ -327,6 +351,11 @@ SOURCE OCR TEXT:
 
 Output flat JSON:"""
 
+        # Scale the output budget to the schema size — a fixed 220-token cap was tuned for
+        # ~10-field schemas and truncates mid-JSON (causing parse failures) once a doc type's
+        # schema grows past that, as happened when sale_deed expanded to 30+ fields.
+        max_tokens = min(2000, max(220, len(schema_dict) * 40))
+
         payload = {
             "model": "qwen2.5-7b",
             "messages": [
@@ -334,7 +363,7 @@ Output flat JSON:"""
                 {"role": "user", "content": user_prompt}
             ],
             "temperature": 0.0,
-            "max_tokens": 220,
+            "max_tokens": max_tokens,
             "response_format": {"type": "json_object"}
         }
 

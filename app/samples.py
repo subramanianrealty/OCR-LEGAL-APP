@@ -6,9 +6,9 @@ DOCUMENT_CATEGORIES = [
         "tamil_name": "கிரையப் பத்திரம் / தாய் பத்திரம்",
         "icon": "file-text",
         "color": "emerald",
-        "description": "Vendor & Purchaser details, History/Previous owner, Schedule of property (Land, Land+Building, Apartment UDS), Boundary, and SRO details.",
+        "description": "Executant & Claimant details (name, father's/husband's name, address), History/Previous owner, Schedule of property (Land, Land+Building, Apartment UDS), Boundary, SRO/Book/Registration details, Witnesses, POA and NRI Passport/Visa details.",
         "key_fields": [
-            "Vendor Details", "Purchaser Details", "History / Previous Owner Details", "Schedule of Property", "Survey Number / S No", "Land Extent", "Building Built-Up Area", "Apartment UDS & Floor", "Boundary", "SRO Details"
+            "Vendor / Executant Details", "Purchaser / Claimant Details", "History / Previous Owner Details", "Schedule of Property", "Survey Number & Sub-division", "Land Extent", "Building Built-Up Area", "Apartment UDS & Floor", "Boundary (N/S/E/W)", "SRO / Document / Book Details", "Witnesses", "Registrar's Endorsement", "NRI Passport & Visa Details", "Power of Attorney Details"
         ]
     },
     {
@@ -160,7 +160,15 @@ West by: 40 Feet Main Road
 6. SRO REGISTRATION DETAILS:
 Sub-Registrar Office: SRO Velachery
 Document Number: 4521 / 2023 | Book 1
-Stamp Duty Paid: Rs. 5,25,000/- | Registration Fee: Rs. 1,50,000/-""",
+Sale Consideration: Rs. 42,00,000/-
+Stamp Duty Paid: Rs. 5,25,000/- | Registration Fee: Rs. 1,50,000/-
+
+7. WITNESSES:
+1. Mr. P. Selvam, S/o Palanisamy
+2. Mr. R. Ganesan, S/o Ramasamy
+
+CERTIFIED THAT THIS DOCUMENT IS PRESENTED FOR REGISTRATION.
+OFFICE SEAL OF THE SUB-REGISTRAR VELACHERY.""",
         "structured": {
             "document_type": "Sale deed / title deed",
             "vendor_details": {
